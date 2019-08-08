@@ -12,9 +12,15 @@ import torch
 import numpy as np
 import cv2
 import pdb
+from sklearn.metrics import mean_squared_error
+from tqdm import tqdm
+
+# mode settings
+generate_cam = False
+cal_overlap = True
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "resnet"
+model_name = "vgg"
 
 # Number of classes in the dataset
 num_classes = 1
@@ -24,9 +30,61 @@ num_classes = 1
 feature_extract = False
 
 # Test/Save directory
-test_dir = "datasets/shapenet_test_random/"
-save_dir = "cam_test/resnet_ft_bl_random/"
-param_dir = "params/resnet_ft_bl.pkl"
+test_dir = "datasets/test/"
+save_dir = "cam_test/test/"
+param_dir = "params/vgg_ft_fl.pkl"
+
+# overlap settings 
+part_name = 'fl'
+seg_dir = 'datasets/test_seg/'
+pred_dir = 'htmls/test.txt'
+over_save_dir = 'overlaps/test.txt'
+
+
+color_dict = {'fl':[0,0,0], 'fr':[0,0,128], 'bl':[0,128,0], 'br':[0,128,128],
+                'hood':[128,0,0], 'trunk':[128,0,128], 'body':[128,128,0]}
+
+def seg_part(img, color):
+    seg = np.zeros([img.shape[0], img.shape[1]], 'int64')
+    for i in range(img.shape[0]):
+        for j in range(img.shape[1]):
+            if img[i][j][0] == color[0] and img[i][j][1] == color[1] and img[i][j][2] == color[2]:
+                seg[i][j] = 1
+            else:
+                seg[i][j] = 0
+    
+    return seg
+
+def read_seg(path):
+    color = color_dict[part_name]
+    seg_mask_dict = {}
+    for file in tqdm(os.listdir(path)):
+        if file[-3:] == "png":
+            # print('----seg:{}'.format(file))
+            img = cv2.imread(path+file)
+            seg_mask = seg_part(img, color)
+            seg_mask_dict[file] = np.array(seg_mask)
+
+    return seg_mask_dict
+
+def cal_ovlp(mask, heat):
+    result = np.sum(np.bitwise_and(heat[:,:,2], mask))
+    base = np.sum(mask)
+
+    return np.sum(result)/base
+
+def load_pred(path):
+    file = open(path, 'r')
+    content_list = file.readlines()
+    ndict = {}
+    for line in tqdm(content_list):
+        content = line.strip().split(' ')
+        ndict[content[0]] = [int(content[1].split(':')[-1]), int(content[2].split(':')[-1])]
+
+    
+    return ndict
+
+
 
 # networks such as googlenet, resnet, densenet already use global average pooling at the end, so CAM could be used directly.
 def set_parameter_requires_grad(model, feature_extracting):
@@ -63,8 +121,18 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         """
         model_ft = models.vgg16_bn(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
-        num_ftrs = model_ft.classifier[6].in_features
-        model_ft.classifier[6] = nn.Linear(num_ftrs,num_classes)
+        model_ft.classifier = nn.Sequential(
+            nn.Linear(512 * 7 * 7, 4096),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(4096, 4096),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(4096, 512),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(512, num_classes)
+        )
         input_size = 224
 
     elif model_name == "squeezenet":
@@ -105,73 +173,113 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
 
     return model_ft, input_size
 
+
 # original
-net = models.resnet18(pretrained=True)
+# net = models.resnet18(pretrained=True)
 
 # modified
-# net, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=False)
-# net.load_state_dict(torch.load(param_dir))
+net, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=False)
+net.load_state_dict(torch.load(param_dir))
 
-finalconv_name = 'layer4'
+if model_name == 'resnet':
+    finalconv_name  = 'layer4'
+elif model_name == 'vgg':
+    finalconv_name  = 'features'
 
 net.eval()
 
 # traverse all the images in test_dir
-for file in os.listdir(test_dir):
-    hook the feature extractor
-    features_blobs = []
-    def hook_feature(module, input, output):
-        features_blobs.append(output.data.cpu().numpy())
-    net._modules.get(finalconv_name).register_forward_hook(hook_feature)
+print("Load predictions...")
+pred_dict = load_pred(pred_dir)
+print("Load seg masks...")
+seg_mask_dict = read_seg(seg_dir)
 
-    # get the softmax weight
-    params = list(net.parameters())
-    weight_softmax = np.squeeze(params[-2].data.numpy()).reshape(1,512)
+# data init
+focus_loss = 0
+unfocus_loss = 0
+focus_num = 0
+unfocus_num = 0
+over_file = open(over_save_dir, 'w')
 
-    def returnCAM(feature_conv, weight_softmax, class_idx):
-        # generate the class activation maps upsample to 256x256
-        size_upsample = (256, 256)
-        bz, nc, h, w = feature_conv.shape
-        output_cam = []
-        for idx in class_idx:
-            cam = weight_softmax[idx].dot(feature_conv.reshape((nc, h*w)))
-            cam = cam.reshape(h, w)
-            cam = cam - np.min(cam)
-            cam_img = cam / np.max(cam)
-            cam_img = np.uint8(255 * cam_img)
-            output_cam.append(cv2.resize(cam_img, size_upsample))
-        return output_cam
+print("Start CAM...")
+for file in tqdm(os.listdir(test_dir)):
+    if file[-3:] == "png":
+    # hook the feature extractor
+        features_blobs = []
+        def hook_feature(module, input, output):
+            features_blobs.append(output.data.cpu().numpy())
+        net._modules.get(finalconv_name).register_forward_hook(hook_feature)
+
+        # get the softmax weight
+        params = list(net.parameters())
+        weight_softmax = np.squeeze(params[-2].data.numpy()).reshape(1,512)
+
+        def returnCAM(feature_conv, weight_softmax, class_idx):
+            # generate the class activation maps upsample to 256x256
+            size_upsample = (256, 256)
+            bz, nc, h, w = feature_conv.shape
+            output_cam = []
+            for idx in class_idx:
+                cam = weight_softmax[idx].dot(feature_conv.reshape((nc, h*w)))
+                cam = cam.reshape(h, w)
+                cam = cam - np.min(cam)
+                cam_img = cam / np.max(cam)
+                cam_img = np.uint8(255 * cam_img)
+                output_cam.append(cv2.resize(cam_img, size_upsample))
+            return output_cam
 
 
-    normalize = transforms.Normalize(
-    mean=[0.485, 0.456, 0.406],
-    std=[0.229, 0.224, 0.225]
-    )
-    preprocess = transforms.Compose([
-    transforms.Resize((224,224)),
-    transforms.ToTensor(),
-    normalize
-    ])
+        normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+        )
+        preprocess = transforms.Compose([
+        transforms.Resize((224,224)),
+        transforms.ToTensor(),
+        normalize
+        ])
 
-    #################################################################
-    print("{} is being tested...".format(file))
-    img_pil = Image.open(test_dir+file).convert('RGB')
+        #################################################################
+        # print("{} is being tested...".format(file))
+        img_pil = Image.open(test_dir+file).convert('RGB')
 
-    img_tensor = preprocess(img_pil)
-    img_variable = Variable(img_tensor.unsqueeze(0))
-    logit = net(img_variable)
+        img_tensor = preprocess(img_pil)
+        img_variable = Variable(img_tensor.unsqueeze(0))
+        logit = net(img_variable)
 
-    h_x = F.softmax(logit, dim=1).data.squeeze()
-    probs, idx = h_x.sort(0, True)
-    probs = probs.numpy()
-    idx = idx.numpy()
+        h_x = F.softmax(logit, dim=1).data.squeeze()
+        probs, idx = h_x.sort(0, True)
+        probs = probs.numpy()
+        idx = idx.numpy()
 
-    # generate class activation mapping for the top1 prediction
-    CAMs = returnCAM(features_blobs[0], weight_softmax, [idx])
+        # generate class activation mapping for the top1 prediction
+        CAMs = returnCAM(features_blobs[0], weight_softmax, [idx])
 
-    # render the CAM and output
-    img = cv2.imread(test_dir+file)
-    height, width, _ = img.shape
-    heatmap = cv2.applyColorMap(cv2.resize(CAMs[0],(width, height)), cv2.COLORMAP_JET)
-    result = heatmap * 0.3 + img * 0.5
-    cv2.imwrite(save_dir+file, result)
+        # render the CAM and output
+        img = cv2.imread(test_dir+file)
+        height, width, _ = img.shape
+        heatmap = cv2.applyColorMap(cv2.resize(CAMs[0],(width, height)), cv2.COLORMAP_JET)
+
+        if generate_cam:
+            result = heatmap * 0.3 + img * 0.5
+            cv2.imwrite(save_dir+file, result)
+
+        if cal_overlap:
+            score = cal_ovlp(seg_mask_dict[file], heatmap)
+            # print(score)
+            over_file.write("name: {}, overlap_score: {}\n".format(file, score))
+            if score > 0.6:
+                focus_loss += mean_squared_error([pred_dict[file][0]/60], [pred_dict[file][1]/60])
+                focus_num += 1
+            else:
+                unfocus_loss += mean_squared_error([pred_dict[file][0]/60], [pred_dict[file][1]/60])
+                unfocus_num += 1
+
+over_file.close()
+focus_loss /= focus_num
+unfocus_loss /= unfocus_num
+print('{} focus images, loss: {}'.format(focus_num, focus_loss))
+print('{} unfocus images, loss: {}'.format(unfocus_num, unfocus_loss))
+
+
+

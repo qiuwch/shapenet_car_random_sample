@@ -1,0 +1,9 @@
+hatchback_0_15_-8_10_15_20_30_420.png gt:0 pred:-1
+hatchback_0_15_-8_10_15_20_60_420.png gt:0 pred:0
+hatchback_0_15_-8_10_15_80_30_420.png gt:0 pred:2
+hatchback_0_15_-8_10_15_80_60_420.png gt:0 pred:-1
+hatchback_0_15_-8_10_15_140_30_420.png gt:0 pred:-1
+hatchback_0_15_-8_10_15_140_60_420.png gt:0 pred:1
+hatchback_0_15_-8_10_15_230_30_420.png gt:0 pred:-28
+hatchback_0_15_-8_10_15_230_60_420.png gt:0 pred:0
+hatchback_0_15_-8_10_20_20_30_420.png gt:0 pred:0
