@@ -31,24 +31,24 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "test"
+command = "train"
 
 # Dataset settings
 num_images = 97200
 sample_iter = 30
 test_ratio = 0.1
 data_dir = 'datasets/shapenet_car_data/'
-test_dir = 'datasets/shapenet_test_random/'
+test_dir = 'datasets/shapenet_test_bl/'
 model_dir = 'params/vgg_ft_bl.pkl'
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "vgg"
+model_name = "resnet"
 
 # Number of classes in the dataset
 num_classes = 1
 
 # Batch size for training (change depending on how much memory you have)
-batch_size = 8
+batch_size = 64
 
 # Number of epochs to train for
 num_epochs = 20
@@ -176,7 +176,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 val_list.append(epoch_loss)
 
             # deep copy the model
-            if phase == 'train' and (epoch == 0 or epoch_loss<best_loss):
+            if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
                 best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(model.state_dict())
 

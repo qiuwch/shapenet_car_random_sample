@@ -1,9 +1,9 @@
-name: hatchback_0_15_-8_10_15_20_30_420.png, overlap_score: 0.16859122401847576
-name: hatchback_0_15_-8_10_15_20_60_420.png, overlap_score: 0.0
-name: hatchback_0_15_-8_10_15_140_60_420.png, overlap_score: 0.0
-name: hatchback_0_15_-8_10_15_230_60_420.png, overlap_score: 0.0
-name: hatchback_0_15_-8_10_15_80_30_420.png, overlap_score: 0.29205607476635514
-name: hatchback_0_15_-8_10_15_230_30_420.png, overlap_score: 0.0
-name: hatchback_0_15_-8_10_20_20_30_420.png, overlap_score: 0.0
-name: hatchback_0_15_-8_10_15_140_30_420.png, overlap_score: 0.0
-name: hatchback_0_15_-8_10_15_80_60_420.png, overlap_score: 0.7415307402760352
+name: hatchback_0_15_-8_10_15_20_30_420.png, overlap_score: 145.7867897037397, pred: [0, -1]
+name: hatchback_0_15_-8_10_15_20_60_420.png, overlap_score: 27.695292439372324, pred: [0, 0]
+name: hatchback_0_15_-8_10_15_140_60_420.png, overlap_score: 67.0080137378363, pred: [0, 1]
+name: hatchback_0_15_-8_10_15_230_60_420.png, overlap_score: 43.94216570959803, pred: [0, 0]
+name: hatchback_0_15_-8_10_15_80_30_420.png, overlap_score: 147.3235445646574, pred: [0, 2]
+name: hatchback_0_15_-8_10_15_230_30_420.png, overlap_score: 35.90347826086956, pred: [0, -28]
+name: hatchback_0_15_-8_10_20_20_30_420.png, overlap_score: 128.0591826823007, pred: [0, 0]
+name: hatchback_0_15_-8_10_15_140_30_420.png, overlap_score: 33.7375296912114, pred: [0, -1]
+name: hatchback_0_15_-8_10_15_80_60_420.png, overlap_score: 180.7197661673365, pred: [0, -1]
