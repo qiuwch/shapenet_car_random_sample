@@ -71,10 +71,12 @@ def output_test(file, html, names, result):
         type_gt, fl_gt, fr_gt, bl_gt, br_gt, trunk_gt, az_gt, el_gt, dist_gt = names[i].split('_')
         # content  = "gt: [ {} {} {} {} {} {} {}]---predictitmutmuxons: [".format(fl_gt, fr_gt, bl_gt, br_gt, trunk_gt, az_gt, el_gt)
         content  = "name: {}---gt: [ {}]---predictions: [".format(names[i], fl_gt)
-        content += ' '+str(int(round(result[i][0]*60)))
+        # content += ' '+str(int(round(result[i][0]*60)))
+        content += ' '+str(int(round(result[i])))
         content += "]\n"
         file.write(content)
-        html.write("{} gt:{} pred:{}\n".format(names[i], fl_gt, str(int(round(result[i][0]*60)))))
+        # html.write("{} gt:{} pred:{}\n".format(names[i], fl_gt, str(int(round(result[i][0]*60)))))
+        html.write("{} gt:{} pred:{}\n".format(names[i], fl_gt, str(int(round(result[i])))))
 
     
 def test_model(model, dataloaders, criterion):
@@ -95,7 +97,8 @@ def test_model(model, dataloaders, criterion):
         
         running_loss += loss.item() * inputs.size(0)
         
-        output_test(file, html, names, outputs.cpu().detach().numpy())
+        # output_test(file, html, names, outputs.cpu().detach().numpy())
+        output_test(file, html, names, preprocessing.minmax_scale(outputs.cpu().detach().numpy()[:,0],feature_range=(-40,0)))
         
     loss = running_loss / len(dataloaders.dataset)
     file.close()
@@ -326,7 +329,7 @@ def load_data(dir, mode):
                         img = cv2.imread(dir+file)
                         img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
                         x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                        y_data.append([int(bl)/60])
+                        y_data.append([int(bl)])
     else:
         num_test_images = int(num_images*test_ratio)
         random_list = range(num_images)
@@ -340,10 +343,10 @@ def load_data(dir, mode):
                     img = cv2.imread(dir+file)
                     img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
                     x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                    y_data.append([int(bl)/60])
+                    y_data.append([int(bl)])
                     n += 1
                 
-    # y_data = preprocessing.minmax_scale(y_data,feature_range=(0,1))
+    y_data = preprocessing.minmax_scale(y_data,feature_range=(0,1))
     # print(y_data)
     print(mode+"-Data loaded: "+str(len(name_data))+" images")
     return name_data, x_data, y_data

@@ -14,13 +14,15 @@ import cv2
 import pdb
 from sklearn.metrics import mean_squared_error
 from tqdm import tqdm
+import json
+from seg_dict_save import save_dict
 
 # mode settings
 generate_cam = True
 cal_overlap = True
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "vgg"
+model_name = "resnet"
 
 # Number of classes in the dataset
 num_classes = 1
@@ -30,55 +32,35 @@ num_classes = 1
 feature_extract = False
 
 # Test/Save directory
-test_dir = "datasets/shapenet_test_fl/"
-save_dir = "cam_test/vgg_ft_fl_same/"
-param_dir = "params/vgg_ft_fl.pkl"
+# test_dir = "datasets/shapenet_test_fl/"
+# save_dir = "cam_test/resnet_ft_fl_same/"
+# param_dir = "params/resnet_ft_fl.pkl"
 
-# overlap settings 
-part_name = 'fl'
-seg_dir = 'datasets/shapenet_test_fl_seg/'
-pred_dir = 'htmls/vgg_ft_fl_same.txt'
-over_save_dir = 'overlaps/vgg_ft_fl_same.txt'
-thresh = 180
+# # overlap settings 
+# part_name = 'fl'
+# seg_dict_dir = 'seg_dict/shapenet_test_fl_seg.json'
+# pred_dir = 'htmls/resnet_ft_fl_same.txt'
+# over_save_dir = 'overlaps/resnet_ft_fl_same.txt'
+thresh = 200
 
 # Test Configurations
-# test_dir = "datasets/test/"
-# save_dir = "cam_test/test/"
-# param_dir = "params/vgg_ft_fl.pkl"
+test_dir = "datasets/test/"
+save_dir = "cam_test/test/"
+param_dir = "params/resnet_ft_fl.pkl"
 
-# part_name = 'fl'
-# seg_dir = 'datasets/test_seg/'
-# pred_dir = 'htmls/test.txt'
-# over_save_dir = 'overlaps/test.txt'
+part_name = 'fl'
+# if need to generate dict.npy
+seg_dir = 'datasets/test_seg/'
+# if dict.npy has generated
+seg_dict_dir = 'seg_dict/test_seg.npy'
+pred_dir = 'htmls/test.txt'
+over_save_dir = 'overlaps/test.txt'
 
 
-color_dict = {'fl':[0,0,0], 'fr':[0,0,128], 'bl':[0,128,0], 'br':[0,128,128],
-                'hood':[128,0,0], 'trunk':[128,0,128], 'body':[128,128,0]}
-
-def seg_part(img, color):
-    seg = np.zeros([img.shape[0], img.shape[1]], np.uint8)
-    for i in range(img.shape[0]):
-        for j in range(img.shape[1]):
-            if img[i][j][0] == color[0] and img[i][j][1] == color[1] and img[i][j][2] == color[2]:
-                seg[i][j] = 0
-            else:
-                seg[i][j] = 255
-    kernel = np.ones((5,5), np.uint8)
-    seg_eron = cv2.erode(seg, kernel, iterations=5)
-    seg_eron[seg_eron==0] = 1
-    seg_eron[seg_eron==255] = 0
-              
-    return seg_eron
-
-def read_seg(path):
-    color = color_dict[part_name]
-    seg_mask_dict = {}
-    for file in tqdm(os.listdir(path)):
-        if file[-3:] == "png":
-            # print('----seg:{}'.format(file))
-            img = cv2.imread(path+file)
-            seg_mask = seg_part(img, color)
-            seg_mask_dict[file] = np.array(seg_mask)
+def read_seg_dict(path):
+    if not os.path.isfile(path):
+        save_dict(seg_dir, path)
+    seg_mask_dict = np.load(path).item()
 
     return seg_mask_dict
 
@@ -207,7 +189,7 @@ net.eval()
 print("Load predictions...")
 pred_dict = load_pred(pred_dir)
 print("Load seg masks...")
-seg_mask_dict = read_seg(seg_dir)
+seg_mask_dict = read_seg_dict(seg_dict_dir)
 
 # data init
 focus_loss = 0
