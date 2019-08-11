@@ -46,7 +46,7 @@ model_dir = 'params/sigmoid/vgg_ft_fl.pkl'
 plot_dir = 'plots/sigmoid/vgg_ft_fl.jpg'
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "vgg"
+model_name = "resnet"
 
 # Number of classes in the dataset
 num_classes = 1
@@ -358,7 +358,7 @@ def load_data(dir, mode):
                     y_data.append([int(fl)/data_range])
                     n += 1
                 
-    # y_data = preprocessing.minmax_scale(y_data,feature_range=(0,1))
+    y_data = preprocessing.minmax_scale(y_data,feature_range=(0,1))
     # print(y_data)
     print(mode+"-Data loaded: "+str(len(name_data))+" images")
     return name_data, x_data, y_data
