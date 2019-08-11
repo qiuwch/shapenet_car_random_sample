@@ -18,6 +18,9 @@ from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 import torch.utils.data as Data
 import random
+import math
+from tqdm import tqdm
+from sklearn.metrics import mean_absolute_error
 try:
     from torch.hub import load_state_dict_from_url
 except ImportError:
@@ -31,15 +34,16 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "test"
+command = "train"
 
 # Dataset settings
 num_images = 97200
 sample_iter = 30
 test_ratio = 0.1
 data_dir = 'datasets/shapenet_car_data/'
-test_dir = 'datasets/shapenet_test_random/'
-model_dir = 'params/vgg_ft_bl.pkl'
+test_dir = 'datasets/shapenet_test_fl/'
+model_dir = 'params/sigmoid/vgg_ft_fl.pkl'
+plot_dir = 'plots/sigmoid/vgg_ft_fl.jpg'
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
 model_name = "vgg"
@@ -48,7 +52,7 @@ model_name = "vgg"
 num_classes = 1
 
 # Batch size for training (change depending on how much memory you have)
-batch_size = 8
+batch_size = 32
 
 # Number of epochs to train for
 num_epochs = 20
@@ -56,6 +60,9 @@ num_epochs = 20
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
 feature_extract = False
+
+# Data range
+data_range = -60
 
 print("\n-------------------------------------")
 print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}".format(model_name, num_classes, batch_size, num_epochs, data_dir, test_dir))
@@ -71,10 +78,12 @@ def output_test(file, html, names, result):
         type_gt, fl_gt, fr_gt, bl_gt, br_gt, trunk_gt, az_gt, el_gt, dist_gt = names[i].split('_')
         # content  = "gt: [ {} {} {} {} {} {} {}]---predictitmutmuxons: [".format(fl_gt, fr_gt, bl_gt, br_gt, trunk_gt, az_gt, el_gt)
         content  = "name: {}---gt: [ {}]---predictions: [".format(names[i], fl_gt)
-        content += ' '+str(int(round(result[i][0]*60)))
+        content += ' '+str(int(round(result[i][0]*data_range)))
+        # content += ' '+str(int(round(result[i])))
         content += "]\n"
         file.write(content)
-        html.write("{} gt:{} pred:{}\n".format(names[i], fl_gt, str(int(round(result[i][0]*60)))))
+        html.write("{} gt:{} pred:{}\n".format(names[i], fl_gt, str(int(round(result[i][0]*data_range)))))
+        # html.write("{} gt:{} pred:{}\n".format(names[i], fl_gt, str(int(round(result[i])))))
 
     
 def test_model(model, dataloaders, criterion):
@@ -83,6 +92,7 @@ def test_model(model, dataloaders, criterion):
     html = open("./html_input.txt",'w')
     
     running_loss = 0
+    running_dist = 0
     for names, inputs, labels in dataloaders:
         inputs = inputs.to(device)
         labels = labels.to(device)
@@ -91,17 +101,20 @@ def test_model(model, dataloaders, criterion):
         
         outputs = model(inputs)
         loss = criterion(outputs, labels)
-        _, preds = torch.max(outputs, 1)
+        dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())
         
         running_loss += loss.item() * inputs.size(0)
+        running_dist += dist.item() * inputs.size(0)
         
         output_test(file, html, names, outputs.cpu().detach().numpy())
+        # output_test(file, html, names, preprocessing.minmax_scale(outputs.cpu().detach().numpy()[:,0],feature_range=(-40,0)))
         
     loss = running_loss / len(dataloaders.dataset)
+    dist = running_dist / len(dataloaders.dataset)
     file.close()
     html.close()
     
-    return loss
+    return loss, dist
         
     
 
@@ -112,7 +125,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
 
     best_model_wts = copy.deepcopy(model.state_dict())
 
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs)):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
         x_list.append(epoch)
@@ -126,7 +139,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 model.eval()   # Set model to evaluate mode
 
             running_loss = 0.0
-            running_corrects = 0
+            running_dist = 0.0
 
             # Iterate over data.
             for i, (name, inputs, labels) in enumerate(dataloaders[phase]):
@@ -154,8 +167,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                     else:
                         outputs = model(inputs)
                         loss = criterion(outputs, labels)
-
-                    _, preds = torch.max(outputs, 1)
+                        dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -164,10 +176,12 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
 
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
+                running_dist += dist.item() * inputs.size(0)
 
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
+            epoch_dist = running_dist / len(dataloaders[phase].dataset)
 
-            print('{} Loss: {:.4f}'.format(phase, epoch_loss))
+            print('{} Loss: {:.4f}, Dist: {:.4f}'.format(phase, epoch_loss, epoch_dist*math.abs(data_range)))
             
             # plot
             if phase == 'train':
@@ -176,7 +190,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 val_list.append(epoch_loss)
 
             # deep copy the model
-            if phase == 'train' and (epoch == 0 or epoch_loss<best_loss):
+            if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
                 best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(model.state_dict())
 
@@ -244,7 +258,8 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
             nn.Linear(4096, 1000),
             nn.ReLU(True),
             nn.Dropout(),
-            nn.Linear(1000, num_classes)
+            nn.Linear(1000, num_classes),
+            nn.Sigmoid() # add sigmoid or not
         )
         pretrained_dict = load_state_dict_from_url(model_urls["vgg16_bn"],
                                               progress=True)
@@ -315,18 +330,18 @@ def load_data(dir, mode):
     x_data = []
     y_data = []
     if mode == 'train':
-        for i in range(sample_iter):
-            print('sample iter:{}'.format(i))
+        print("Start sampling...")
+        for i in tqdm(range(sample_iter)):
             fl_spl, fr_spl, bl_spl, br_spl, trunk_spl = sample_data()
             for file in os.listdir(dir):
                 if file[-3:] == "png":
                     type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
-                    if fl == fl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl:
+                    if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl:
                         name_data.append(file)
                         img = cv2.imread(dir+file)
                         img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
                         x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                        y_data.append([int(bl)/60])
+                        y_data.append([int(fl)/data_range])
     else:
         num_test_images = int(num_images*test_ratio)
         random_list = range(num_images)
@@ -340,7 +355,7 @@ def load_data(dir, mode):
                     img = cv2.imread(dir+file)
                     img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
                     x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                    y_data.append([int(bl)/60])
+                    y_data.append([int(fl)/data_range])
                     n += 1
                 
     # y_data = preprocessing.minmax_scale(y_data,feature_range=(0,1))
@@ -426,19 +441,19 @@ if command == "train":
 
     # Train and evaluate
     model_ft = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs, is_inception=(model_name=="inception"))
-    torch.save(model_ft.module.state_dict(), 'params.pkl')
+    torch.save(model_ft.module.state_dict(), model_dir)
 
     # plot
-    #plt.title('vgg16_bn Feature Extract',fontsize='large',fontweight='bold')
-    # plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
+    # plt.title('vgg16_bn Feature Extract',fontsize='large',fontweight='bold')
+    plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
     #plt.title('ResNet18 Feature Extract',fontsize='large', fontweight='bold')
-    plt.title('ResNet18 Fine-tune',fontsize='large', fontweight='bold')
+    # plt.title('ResNet18 Fine-tune',fontsize='large', fontweight='bold')
     #plt.title('DenseNet121 Feature Extract',fontsize='large',fontweight='bold')
     #plt.title('DenseNet121 Fine-tuning',fontsize='large',fontweight='bold')
     plt.plot(x_list,train_list,"x-",label="train loss")
     plt.plot(x_list,val_list,"+-",label="val loss")
     plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
-    plt.savefig("./loss_plot.jpg")
+    plt.savefig(plot_dir)
 
 # Test
 # Load model
@@ -455,5 +470,6 @@ if command == "test":
 # Build testset
 testsets = myDataset(test_dir, 'test')
 testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=4)
-test_loss = test_model(model_ft, testloader_dict, criterion)
+test_loss, test_dist = test_model(model_ft, testloader_dict, criterion)
 print("test mse: ", test_loss)
+print("test mae: ", test_dist*math.abs(data_range))

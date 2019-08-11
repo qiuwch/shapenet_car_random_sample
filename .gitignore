@@ -1,7 +1,7 @@
 cam_test/
-
 datasets/
-
-
 params/
 nets/
+seg_dict/
+
+.pkl
