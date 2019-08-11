@@ -24,7 +24,7 @@ generate_cam = False
 cal_overlap = True
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "vgg"
+model_name = "resnet"
 part_name = 'fl'
 
 # Number of classes in the dataset
@@ -48,7 +48,7 @@ focus_dir = 'focus_names/{}_ft_{}_same/focus.txt'.format(model_name, part_name)
 unfocus_dir = 'focus_names/{}_ft_{}_same/unfocus.txt'.format(model_name, part_name)
 none_dir = 'focus_names/{}_ft_{}_same/none.txt'.format(model_name, part_name)
 
-thresh = 0.9
+thresh = 0.1
 
 # Test Configurations
 # test_dir = "datasets/test/"
@@ -291,18 +291,18 @@ with open(over_save_dir,"w") as csvfile:
                 # print(score)
                 type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
                 loss = math.sqrt(mean_squared_error([pred_dict[file][0]], [pred_dict[file][1]]))
-                if score != None and (score > thresh or score < 1-thresh):
+                if score != None and (score > thresh):# or score < 1-thresh):
                     focus_loss += loss
                     focus_num += 1
-                    focus_file.write(file)
-                elif score != None and (score <= thresh and score >= 1-thresh):
+                    focus_file.write("{} {}\n".format(file, score))
+                elif score != None and (score <= thresh):# and score >= 1-thresh):
                     unfocus_loss += loss
                     unfocus_num += 1
-                    unfocus_file.write(file)
+                    unfocus_file.write("{} {}\n".format(file, score))
                 else:
                     none_loss += loss
                     none_num += 1
-                    none_file.write(file)
+                    none_file.write("{} {}\n".format(file, score))
 
                 over_file.writerow([file, fl, fr, bl, br, trunk, az, el, dist, str(score), str(loss)])
 

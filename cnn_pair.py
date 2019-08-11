@@ -33,21 +33,16 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "train"
+command = "test"
 
 # Dataset settings
 num_images = 97200
 sample_iter = 30
 test_ratio = 0.1
-data_dir = 'datasets/shapenet_car_data/'
-test_dir = 'datasets/shapenet_test_fl/'
-model_dir = 'params/sigmoid/vgg_ft_fl.pkl'
-plot_dir = 'plots/sigmoid/vgg_ft_fl.jpg'
-output_dir = 'outputs/sigmoid/vgg_ft_fl.txt'
-html_dir = "htmls/sigmoid/vgg_ft_fl.txt"
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "vgg"
+model_name = "resnet"
+part_name = "fl"
 
 # Number of classes in the dataset
 num_classes = 1
@@ -64,6 +59,14 @@ feature_extract = False
 
 # Data range
 data_range = -60
+
+# Dir settings
+data_dir = 'datasets/shapenet_car_data/'
+test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
+model_dir = 'params/sigmoid/{}_ft_{}.pkl'.format(model_name, part_name)
+plot_dir = 'plots/sigmoid/{}_ft_{}.jpg'.format(model_name, part_name)
+output_dir = 'outputs/sigmoid/{}_ft_{}.txt'.format(model_name, part_name)
+html_dir = "htmls/sigmoid/{}_ft_{}.txt".format(model_name, part_name)
 
 print("\n-------------------------------------")
 print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}".format(model_name, num_classes, batch_size, num_epochs, data_dir, test_dir))
