@@ -18,7 +18,6 @@ from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 import torch.utils.data as Data
 import random
-import math
 from tqdm import tqdm
 from sklearn.metrics import mean_absolute_error
 try:
@@ -44,9 +43,11 @@ data_dir = 'datasets/shapenet_car_data/'
 test_dir = 'datasets/shapenet_test_fl/'
 model_dir = 'params/sigmoid/vgg_ft_fl.pkl'
 plot_dir = 'plots/sigmoid/vgg_ft_fl.jpg'
+output_dir = 'outputs/sigmoid/vgg_ft_fl.txt'
+html_dir = "htmls/sigmoid/vgg_ft_fl.txt"
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "resnet"
+model_name = "vgg"
 
 # Number of classes in the dataset
 num_classes = 1
@@ -88,8 +89,8 @@ def output_test(file, html, names, result):
     
 def test_model(model, dataloaders, criterion):
     since = time.time()
-    file = open("./test_out.txt",'w')
-    html = open("./html_input.txt",'w')
+    file = open(output_dir,'w')
+    html = open(html_dir,'w')
     
     running_loss = 0
     running_dist = 0
@@ -181,13 +182,13 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
             epoch_dist = running_dist / len(dataloaders[phase].dataset)
 
-            print('{} Loss: {:.4f}, Dist: {:.4f}'.format(phase, epoch_loss, epoch_dist*math.abs(data_range)))
+            print('{} Loss: {:.4f}, Dist: {:.4f}'.format(phase, epoch_loss, epoch_dist*abs(data_range)))
             
             # plot
             if phase == 'train':
-                train_list.append(epoch_loss)
+                train_list.append(epoch_dist*60)
             else:
-                val_list.append(epoch_loss)
+                val_list.append(epoch_dist*60)
 
             # deep copy the model
             if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
@@ -230,7 +231,10 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         model_ft = models.resnet18(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
         num_ftrs = model_ft.fc.in_features
-        model_ft.fc = nn.Linear(num_ftrs, num_classes)
+        model_ft.fc = nn.Sequential(
+            nn.Linear(num_ftrs, num_classes),
+            nn.Sigmoid() # add sigmoid or not
+        )
         input_size = 224
 
     elif model_name == "alexnet":
@@ -467,9 +471,10 @@ if command == "test":
 
     model_ft.eval()
 
+    valsets = myDataset(test_dir, 'test')
+
 # Build testset
-testsets = myDataset(test_dir, 'test')
-testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=4)
+testloader_dict = Data.DataLoader(valsets, batch_size=batch_size, shuffle=True, num_workers=4)
 test_loss, test_dist = test_model(model_ft, testloader_dict, criterion)
 print("test mse: ", test_loss)
-print("test mae: ", test_dist*math.abs(data_range))
+print("test mae: ", test_dist*abs(data_range))

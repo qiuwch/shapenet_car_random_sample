@@ -24,7 +24,8 @@ generate_cam = False
 cal_overlap = True
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "resnet"
+model_name = "vgg"
+part_name = 'fl'
 
 # Number of classes in the dataset
 num_classes = 1
@@ -33,23 +34,25 @@ num_classes = 1
 #   when True we only update the reshaped layer params
 feature_extract = False
 
-# Test/Save directory
-test_dir = "datasets/shapenet_test_fl/"
-save_dir = "cam_test/resnet_ft_fl_same/"
-param_dir = "params/resnet_ft_fl.pkl"
+# Dataset directory
+test_dir = "datasets/shapenet_test_{}/".format(part_name)
+seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
+seg_dict_dir = 'seg_dict/shapenet_test_{}_seg.npy'.format(part_name)
 
 # overlap settings 
-part_name = 'fl'
-seg_dir = 'datasets/shapenet_test_fl_seg/'
-seg_dict_dir = 'seg_dict/shapenet_test_fl_seg.npy'
-pred_dir = 'htmls/resnet_ft_fl_same.txt'
-over_save_dir = 'overlaps/resnet_ft_fl_same.csv'
+cam_dir = "cam_test/sigmoid/{}_ft_{}_same/".format(model_name, part_name)
+param_dir = "params/sigmoid/{}_ft_{}.pkl".format(model_name, part_name)
+pred_dir = 'htmls/sigmoid/{}_ft_{}_same.txt'.format(model_name, part_name)
+over_save_dir = 'overlaps/sigmoid/{}_ft_{}_same.csv'.format(model_name, part_name)
+focus_dir = 'focus_names/{}_ft_{}_same/focus.txt'.format(model_name, part_name)
+unfocus_dir = 'focus_names/{}_ft_{}_same/unfocus.txt'.format(model_name, part_name)
+none_dir = 'focus_names/{}_ft_{}_same/none.txt'.format(model_name, part_name)
 
-thresh = 0.1
+thresh = 0.9
 
 # Test Configurations
 # test_dir = "datasets/test/"
-# save_dir = "cam_test/test/"
+# cam_dir = "cam_test/test/"
 # param_dir = "params/resnet_ft_fl.pkl"
 
 # part_name = 'fl'
@@ -109,7 +112,10 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         model_ft = models.resnet18(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
         num_ftrs = model_ft.fc.in_features
-        model_ft.fc = nn.Linear(num_ftrs, num_classes)
+        model_ft.fc = nn.Sequential(
+            nn.Linear(num_ftrs, num_classes),
+            nn.Sigmoid() # add sigmoid or not
+        )
         input_size = 224
 
     elif model_name == "alexnet":
@@ -209,6 +215,11 @@ focus_num = 0
 unfocus_num = 0
 none_num = 0
 
+# save dir init
+focus_file = open(focus_dir, 'w')
+unfocus_file = open(unfocus_dir, 'w')
+none_file = open(none_dir, 'w')
+
 with open(over_save_dir,"w") as csvfile: 
     over_file = csv.writer(csvfile)
     print("Start CAM...")
@@ -273,22 +284,25 @@ with open(over_save_dir,"w") as csvfile:
 
             if generate_cam:
                 result = heatmap * 0.3 + img * 0.5
-                cv2.imwrite(save_dir+file, result)
+                cv2.imwrite(cam_dir+file, result)
 
             if cal_overlap:
                 score = cal_ovlp(seg_mask_dict[file], cv2.resize(CAMs[0],(width, height)))
                 # print(score)
                 type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
                 loss = math.sqrt(mean_squared_error([pred_dict[file][0]], [pred_dict[file][1]]))
-                if score != None and score > thresh:
+                if score != None and (score > thresh or score < 1-thresh):
                     focus_loss += loss
                     focus_num += 1
-                elif score != None and score <= thresh:
+                    focus_file.write(file)
+                elif score != None and (score <= thresh and score >= 1-thresh):
                     unfocus_loss += loss
                     unfocus_num += 1
+                    unfocus_file.write(file)
                 else:
                     none_loss += loss
                     none_num += 1
+                    none_file.write(file)
 
                 over_file.writerow([file, fl, fr, bl, br, trunk, az, el, dist, str(score), str(loss)])
 
@@ -298,6 +312,11 @@ with open(over_save_dir,"w") as csvfile:
     print('{} focus images, loss: {}'.format(focus_num, focus_loss))
     print('{} unfocus images, loss: {}'.format(unfocus_num, unfocus_loss))
     print('{} None images, loss: {}'.format(none_num, none_loss))
+
+    focus_file.close()
+    unfocus_file.close()
+    none_file.close()
+
 
 
 
