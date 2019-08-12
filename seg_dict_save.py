@@ -7,9 +7,10 @@ from tqdm import tqdm
 # seg_dir = 'datasets/test_seg/'
 # save_dir = "seg_dict/test_seg.npy"
 
-seg_dir = 'datasets/shapenet_test_fl_seg/'
-save_dir = "seg_dict/shapenet_test_fl_seg.npy"
 part_name = 'fl'
+seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
+save_dir = "seg_dict/shapenet_test_{}_seg.npy".format(part_name)
+
 
 color_dict = {'fl':[0,0,0], 'fr':[0,0,128], 'bl':[0,128,0], 'br':[0,128,128],
                 'hood':[128,0,0], 'trunk':[128,0,128], 'body':[128,128,0]}
@@ -22,6 +23,8 @@ def seg_part(img, color):
                 seg[i][j] = 0
             else:
                 seg[i][j] = 255
+
+    # dilate the target part
     kernel = np.ones((5,5), np.uint8)
     seg_eron = cv2.erode(seg, kernel, iterations=5)
     seg_eron[seg_eron==0] = 1

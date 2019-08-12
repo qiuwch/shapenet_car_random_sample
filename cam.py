@@ -19,8 +19,10 @@ import re
 import math
 from seg_dict_save import save_dict
 
+
+############### Configurations ###############
 # mode settings
-generate_cam = False
+generate_cam = True
 cal_overlap = True
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
@@ -39,15 +41,18 @@ test_dir = "datasets/shapenet_test_{}/".format(part_name)
 seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
 seg_dict_dir = 'seg_dict/shapenet_test_{}_seg.npy'.format(part_name)
 
-# overlap settings 
-cam_dir = "cam_test/sigmoid/{}_ft_{}_same/".format(model_name, part_name)
+# Model settings 
 param_dir = "params/sigmoid/{}_ft_{}.pkl".format(model_name, part_name)
 pred_dir = 'htmls/sigmoid/{}_ft_{}_same.txt'.format(model_name, part_name)
+
+# Save settings
+cam_dir = "cam_test/sigmoid/{}_ft_{}_same/".format(model_name, part_name)
 over_save_dir = 'overlaps/sigmoid/{}_ft_{}_same.csv'.format(model_name, part_name)
 focus_dir = 'focus_names/{}_ft_{}_same/focus.txt'.format(model_name, part_name)
 unfocus_dir = 'focus_names/{}_ft_{}_same/unfocus.txt'.format(model_name, part_name)
 none_dir = 'focus_names/{}_ft_{}_same/none.txt'.format(model_name, part_name)
 
+# Division threshold
 thresh = 0.1
 
 # Test Configurations
@@ -71,7 +76,18 @@ def read_seg_dict(path):
 
     return seg_mask_dict
 
+def load_pred(path):
+    file = open(path, 'r')
+    content_list = file.readlines()
+    ndict = {}
+    for line in tqdm(content_list):
+        content = line.strip().split(' ')
+        ndict[content[0]] = [int(content[1].split(':')[-1]), int(content[2].split(':')[-1])]
+    
+    return ndict
+
 def cal_ovlp(mask, heat):
+    # Normalization for the heatmap
     data_transforms = transforms.Compose([
                 transforms.ToTensor()
             ])
@@ -80,18 +96,6 @@ def cal_ovlp(mask, heat):
     base = np.sum(mask)
 
     return np.sum(result)/base if base!= 0 else None
-
-def load_pred(path):
-    file = open(path, 'r')
-    content_list = file.readlines()
-    ndict = {}
-    for line in tqdm(content_list):
-        content = line.strip().split(' ')
-        ndict[content[0]] = [int(content[1].split(':')[-1]), int(content[2].split(':')[-1])]
-
-    
-    return ndict
-
 
 
 # networks such as googlenet, resnet, densenet already use global average pooling at the end, so CAM could be used directly.
@@ -263,7 +267,8 @@ with open(over_save_dir,"w") as csvfile:
 
             #################################################################
             # print("{} is being tested...".format(file))
-            img_pil = Image.open(test_dir+file).convert('RGB')
+            img = cv2.imread(test_dir+file)
+            img_pil = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
 
             img_tensor = preprocess(img_pil)
             img_variable = Variable(img_tensor.unsqueeze(0))
