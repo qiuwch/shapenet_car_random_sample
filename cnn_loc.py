@@ -64,14 +64,17 @@ data_range = -60
 
 # Dir settings
 data_dir = 'datasets/shapenet_car_data/'
+train_seg_dir = 'datasets/shapenet_car_seg/'
 test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
+test_seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
 model_dir = 'params/sigmoid/{}_ft_{}.pkl'.format(model_name, part_name)
 plot_dir = 'plots/sigmoid/{}_ft_{}.jpg'.format(model_name, part_name)
 output_dir = 'outputs/sigmoid/{}_ft_{}.txt'.format(model_name, part_name)
 html_dir = "htmls/sigmoid/{}_ft_{}.txt".format(model_name, part_name)
 
+
 print("-------------------------------------")
-print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}".format(model_name, num_classes, batch_size, num_epochs, data_dir, test_dir))
+print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}".format(model_name, num_classes+2, batch_size, num_epochs, data_dir, test_dir))
 print("-------------------------------------\n")
 
 x_list = []
@@ -105,12 +108,12 @@ def test_model(model, dataloaders, criterion):
         
         outputs = model(inputs)
         loss = criterion(outputs, labels)
-        dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())
+        dist = mean_absolute_error(outputs.cpu().detach().numpy()[0], labels.cpu().detach().numpy()[0])
         
         running_loss += loss.item() * inputs.size(0)
         running_dist += dist.item() * inputs.size(0)
         
-        output_test(file, html, names, outputs.cpu().detach().numpy())
+        output_test(file, html, names, outputs.cpu().detach().numpy()[0])
         
     loss = running_loss / len(dataloaders.dataset)
     dist = running_dist / len(dataloaders.dataset)
@@ -119,7 +122,6 @@ def test_model(model, dataloaders, criterion):
     
     return loss, dist
         
-    
 
 def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_inception=False):
     since = time.time()
@@ -168,7 +170,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                     else:
                         outputs = model(inputs)
                         loss = criterion(outputs, labels)
-                        dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())
+                        dist = mean_absolute_error(outputs.cpu().detach().numpy()[0], labels.cpu().detach().numpy()[0])
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -219,8 +221,41 @@ def sample_data():
     trunk_spl = random.sample(trunk, 1)
     return str(fl_spl[0]), str(fr_spl[0]), str(bl_spl[0]), str(br_spl[0]), str(trunk_spl[0])
 
-def load_data(dir, mode):
+
+def get_locat(mask):
+    left = mask.shape[1]
+    right = 0
+    top = None
+    bottom = None
+    for i in range(mask.shape[0]):
+        search = np.argwhere(mask[i]==1)
+        if len(search)!=0 and top==None:
+            top = i
+        if len(search)==0 and top!=None and bottom==None:
+            bottom = i-1
+        if len(search)!=0 and top!=None and i==mask.shape[0]-1 and bottom==None:
+            bottom = i
+        if len(search)!=0:
+            left = min(left, search[0][0])
+            right = max(right, search[-1][0])
+            
+    print(left, right, top, bottom)
+    if top!=None and bottom!=None:
+        return (left+right)//2, (top+bottom)//2
+    else:
+        return None, None
+
+def read_seg_dict(path):
+    if not os.path.isfile(path):
+        save_dict(part_name, seg_dir, path)
+    seg_mask_dict = np.load(path).item()
+
+    return seg_mask_dict
+
+def load_data(dir, seg_dir, mode):
+    seg_mask_dict = read_seg_dict(seg_dir)
     name_data = []
+    mask_data = []
     x_data = []
     y_data = []
     if mode == 'train':
@@ -231,11 +266,14 @@ def load_data(dir, mode):
                 if file[-3:] == "png":
                     type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
                     if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl:
+                        x, y = get_locat(seg_mask_dict[file])
+                        if x == None or y == None:
+                            continue
                         name_data.append(file)
                         img = cv2.imread(dir+file)
                         img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
                         x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                        y_data.append([int(fl)/data_range])
+                        y_data.append([int(fl)/data_range, x, y])
     else:
         num_test_images = int(num_images*test_ratio)
         random_list = range(num_images)
@@ -245,11 +283,14 @@ def load_data(dir, mode):
                 if file[-3:] == "png":
                     # if n in test_id:
                     type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
+                    x, y = get_locat(seg_mask_dict[file])
+                    if x == None or y == None:
+                            continue
                     name_data.append(file)
                     img = cv2.imread(dir+file)
                     img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
                     x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                    y_data.append([int(fl)/data_range])
+                    y_data.append([int(fl)/data_range, x, y])
                     n += 1
                 
     y_data = preprocessing.minmax_scale(y_data,feature_range=(0,1))
@@ -263,13 +304,13 @@ def transform_dataset(dataset, data_transforms):
     return dataset
     
 class myDataset(torch.utils.data.Dataset):
-    def __init__(self, dataSource, mode):
+    def __init__(self, dataSource, segSource, mode):
         # Just normalization for validation
         data_transforms = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ])
-        names, xs, ys = load_data(dataSource, mode)
+        names, xs, ys = load_data(dataSource, segSource, mode)
         self.names = names
         self.imgs = transform_dataset(xs, data_transforms)
         self.labels = Variable(torch.FloatTensor(ys))
@@ -288,7 +329,7 @@ criterion = nn.MSELoss()
 
 if command == "train":
     # Initialize the model for this run
-    model_ft, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=True)
+    model_ft, input_size = initialize_model(model_name, num_classes+2, feature_extract, use_pretrained=True)
     model_ft = nn.DataParallel(model_ft)
 
 
@@ -298,10 +339,9 @@ if command == "train":
     print("Initializing Datasets and Dataloaders...")
 
     # Create training and validation datasets
-    trainsets = myDataset(data_dir, 'train')
-    testsets = myDataset(test_dir, 'test')
+    trainsets = myDataset(data_dir, train_seg_dir, 'train')
+    testsets = myDataset(test_dir, test_seg_dir, 'test')
 
-    #image_datasets = {'train': myDataset([transform_dataset(X_train, data_transforms), Variable(torch.FloatTensor(y_train))]), 'val': myDataset([transform_dataset(X_val, data_transforms), Variable(torch.FloatTensor(y_val))])}
     image_datasets = {'train': trainsets, 'val': testsets}
 
 
@@ -352,7 +392,7 @@ if command == "train":
 # Test
 # Load model
 if command == "test":
-    model_ft, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=False)
+    model_ft, input_size = initialize_model(model_name, num_classes+2, feature_extract, use_pretrained=False)
     model_ft.load_state_dict(torch.load(model_dir))
     model_ft = nn.DataParallel(model_ft)
     if isinstance(model_ft,torch.nn.DataParallel):
@@ -361,7 +401,7 @@ if command == "test":
 
     model_ft.eval()
 
-    testsets = myDataset(test_dir, 'test')
+    testsets = myDataset(test_dir, test_seg_dir, 'test')
 
 # Build testset
 testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=4)

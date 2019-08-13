@@ -44,10 +44,10 @@ def read_seg(path):
 
     return seg_mask_dict
 
-def save_dict(seg_dir, save_dir):
+def save_dict(part_name, seg_dir, save_dir):
     print("Start loading dictionary...")
     seg_dict = read_seg(seg_dir)
     np.save(save_dir, seg_dict)
 
 if __name__=='__main__':
-    save_dict(seg_dir, save_dir)
+    save_dict(part_name, seg_dir, save_dir)

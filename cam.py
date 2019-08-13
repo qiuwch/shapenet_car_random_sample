@@ -73,7 +73,7 @@ thresh = 0.2
 
 def read_seg_dict(path):
     if not os.path.isfile(path):
-        save_dict(seg_dir, path)
+        save_dict(part_name, seg_dir, path)
     seg_mask_dict = np.load(path).item()
 
     return seg_mask_dict
