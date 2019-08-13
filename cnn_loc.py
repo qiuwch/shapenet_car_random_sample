@@ -20,6 +20,7 @@ import torch.utils.data as Data
 import random
 from tqdm import tqdm
 from sklearn.metrics import mean_absolute_error
+from seg_dict_save import save_dict
 from model import *
 try:
     from torch.hub import load_state_dict_from_url
